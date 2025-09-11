@@ -5,7 +5,6 @@ import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 
 interface Poll {
   id: string;
@@ -14,57 +13,47 @@ interface Poll {
 }
 
 export default function PollsDashboard() {
-  const { user, loading } = useAuth();
-  const router = useRouter();
+  const { user } = useAuth();
   const [polls, setPolls] = useState<Poll[]>([]);
   const [loadingPolls, setLoadingPolls] = useState(true);
 
   useEffect(() => {
-    // Wait for the auth context to finish loading before checking the user.
-    if (!loading) {
-      if (!user) {
-        // Redirect to login if there's no user after loading is complete.
-        router.push("/login");
-      } else {
-        // Fetch polls only if a user is authenticated.
-        const fetchPolls = async () => {
-          setLoadingPolls(true);
-          const { data, error } = await supabase
-            .from("polls")
-            .select("id, question, created_at")
-            .eq("created_by", user.id)
-            .order("created_at", { ascending: false });
+    if (user) {
+      const fetchPolls = async () => {
+        setLoadingPolls(true);
+        const { data, error } = await supabase
+          .from("polls")
+          .select("id, question, created_at")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false });
 
-          if (error) {
-            console.error("Error fetching polls:", error);
-            setPolls([]);
-          } else {
-            setPolls(data);
-          }
-          setLoadingPolls(false);
-        };
+        if (error) {
+          console.error("Error fetching polls:", error);
+          setPolls([]);
+        } else {
+          setPolls(data);
+        }
+        setLoadingPolls(false);
+      };
 
-        fetchPolls();
-      }
+      fetchPolls();
     }
-  }, [user, loading, router]);
+  }, [user]);
 
-  if (loading || loadingPolls) {
+  if (loadingPolls) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <p>Loading...</p>
+        <p>Loading polls...</p>
       </div>
     );
   }
-
-  // The rest of the component will only render if a user exists.
-  return (
+   return (
     <div className="max-w-7xl mx-auto">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-2xl sm:text-3xl font-bold">Your Polls</h1>
         <Link href="/polls/create">
-          <Button size="lg" disabled={loading}>
-            {loading ? "Loading..." : "Create Poll"}
+          <Button size="lg">
+            Create Poll
           </Button>
         </Link>
       </div>
