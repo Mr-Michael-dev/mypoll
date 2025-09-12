@@ -7,8 +7,9 @@ import { login } from '@/lib/actions/authActions';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useFormStatus } from 'react-dom';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from "@/context/AuthContext";
+import toast from 'react-hot-toast';
 
 
 const initialState = {
@@ -27,14 +28,34 @@ function SubmitButton() {
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [state, formAction] = useActionState(login, initialState);
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const [hasReloaded, setHasReloaded] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
 
-  const { loading } = useAuth();
+
+  useEffect(() => {
+    // Handle error toasts from redirects
+    const error = searchParams.get('error');
+    if (error) {
+      const errorMessage = {
+        unauthorized_access: 'You must be logged in to view this page.',
+        unauthorized_view_results: 'Only the poll creator can view the full results.',
+        poll_not_found: 'The requested poll was not found.',
+      }[error] || 'An unexpected error occurred.';
+
+      toast.error(errorMessage, { duration: 5000});
+      
+      // Clean up the URL to prevent the toast from reappearing on refresh
+      const newSearchParams = new URLSearchParams(searchParams);
+      newSearchParams.delete('error');
+      router.replace(`?${newSearchParams.toString()}`);
+    }
+  }, [searchParams, router]);
 
   useEffect(() => {
     if (!loading && user && !hasReloaded) {
+      toast.success("You have been successfully logged in.", { duration: 5000});
       console.log("User state set, refreshing session without reload...");
       setHasReloaded(true);
       router.push('/polls'); // Redirect to home or dashboard after login

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
+import { Toaster } from 'react-hot-toast';
 import Header from "@/components/layout/Header";
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
@@ -44,6 +45,7 @@ export default async function RootLayout({
             </main>
           </div>
         </AuthProvider>
+        <Toaster position="top-center" />
       </body>
     </html>
   );

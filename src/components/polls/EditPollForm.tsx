@@ -6,31 +6,42 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { createPoll } from "@/lib/actions/pollActions";
+import { editPoll, createPoll } from "@/lib/actions/pollActions";
 import { X } from "lucide-react"; // Import the delete icon
 
 const initialState = {
   message: "",
 };
 
-function SubmitButton() {
+function SubmitButton({ disabled }: { disabled: boolean }) {
   const { pending } = useFormStatus();
-
   return (
     <Button
       type="submit"
-      aria-disabled={pending}
+      aria-disabled={pending || disabled}
       className="w-full sm:w-auto"
       size="lg"
+      disabled={disabled}
     >
-      {pending ? "Creating..." : "Create Poll"}
+      {pending ? "Submitting..." : "Submit"}
     </Button>
   );
 }
 
-export function CreatePollForm() {
-  const [state, formAction] = useActionState(createPoll, initialState);
-  const [options, setOptions] = useState(["", ""]);
+interface EditPollFormProps {
+  initialQuestion?: string;
+  initialOptions?: string[];
+  pollId?: string;
+}
+
+export function EditPollForm({
+  initialQuestion = "",
+  initialOptions = ["", ""],
+  pollId,
+}: EditPollFormProps) {
+  const [options, setOptions] = useState(initialOptions);
+  const action = pollId ? editPoll : createPoll;
+  const [state, formAction] = useActionState(action, initialState);
 
   const handleAddOption = () => {
     setOptions([...options, ""]);
@@ -50,16 +61,19 @@ export function CreatePollForm() {
     }
   };
 
+  const formDisabled = initialQuestion.trim() === "" || options.some(opt => opt.trim() === "");
+
   return (
     <Card className="w-full max-w-2xl mx-auto shadow-lg">
       <CardHeader className="space-y-1">
-        <CardTitle className="text-2xl">Create a New Poll</CardTitle>
+        <CardTitle className="text-2xl">{pollId ? "Edit Poll" : "Create a New Poll"}</CardTitle>
         <p className="text-sm text-muted-foreground">
           Add your question and at least two options
         </p>
       </CardHeader>
       <CardContent>
         <form action={formAction} className="space-y-6">
+          {pollId && <input type="hidden" name="id" value={pollId} />}
           <div className="space-y-2">
             <Label htmlFor="question" className="text-base">
               Poll Question
@@ -70,6 +84,7 @@ export function CreatePollForm() {
               placeholder="What's your favorite color?"
               className="h-12 text-base"
               required
+              defaultValue={initialQuestion}
             />
           </div>
           <div className="space-y-4">
@@ -80,7 +95,7 @@ export function CreatePollForm() {
                   <Input
                     name="options"
                     placeholder={`Option ${index + 1}`}
-                    value={option}
+                    defaultValue={option}
                     onChange={(e) => handleOptionChange(index, e.target.value)}
                     className="h-11 flex-1"
                     required
@@ -110,13 +125,17 @@ export function CreatePollForm() {
               Add Option
             </Button>
             <div className="order-1 sm:order-2 sm:ml-auto">
-              <SubmitButton />
+              <SubmitButton disabled={formDisabled} />
             </div>
           </div>
           {state?.message && (
             <p
               aria-live="polite"
-              className="mt-4 p-4 text-sm text-red-500 bg-red-50 rounded-lg"
+              className={`mt-4 p-4 text-sm rounded-lg ${
+                state.message.includes("success")
+                  ? "text-green-500 bg-green-50"
+                  : "text-red-500 bg-red-50"
+              }`}
               role="status"
             >
               {state.message}
