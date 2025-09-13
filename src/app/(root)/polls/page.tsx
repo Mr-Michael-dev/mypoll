@@ -14,7 +14,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import toast from 'react-hot-toast';
+import toast from "react-hot-toast"; // Make sure you have react-hot-toast installed
 
 interface Poll {
   id: string;
@@ -92,8 +92,8 @@ export default function PollsDashboard() {
         unauthorized_access: 'You must be logged in to view this page.',
         poll_not_found: 'The requested poll was not found.',
       }[error] || 'An unexpected error occurred.';
-      
-      toast.error(errorMessage, { duration: 5000});
+
+      toast.error(errorMessage);
 
       // Clean up the URL to prevent the toast from reappearing on refresh
       const newSearchParams = new URLSearchParams(searchParams);
@@ -105,7 +105,7 @@ export default function PollsDashboard() {
   useEffect(() => {
     if (!loading) {
       if (!user) {
-        router.push("/login?error=unauthorized_access");
+        router.push("/login");
       } else {
         const fetchPolls = async () => {
           setLoadingPolls(true);
@@ -164,19 +164,17 @@ export default function PollsDashboard() {
     }
     const { error } = await supabase.from("polls").delete().eq("id", pollId);
     if (error) {
-
-      toast.error(`Failed to delete poll: ${error.message}`, { duration: 5000});
+      alert("Failed to delete poll: " + error.message);
     } else {
       setPolls((prev) => prev.filter((poll) => poll.id !== pollId));
-      toast.success("The poll has been successfully deleted.", { duration: 5000});
     }
   };
 
   if (loading || loadingPolls) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-20 w-20 animate-spin text-primary" /> Loading ...
-       </div>
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
     );
   }
 

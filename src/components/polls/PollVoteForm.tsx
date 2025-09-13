@@ -22,49 +22,58 @@ interface Poll {
   options: Option[];
 }
 
-function SubmitButton() {
-  const { pending } = useFormStatus();
-  return (
-    <Button type="submit" className="w-full" disabled={pending}>
-      {pending ? (
-        <>
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Voting...
-        </>
-      ) : (
-        "Vote"
-      )}
-    </Button>
-  );
-}
-
-export default function PollVoteForm({ initialData, initialVotedStatus }: { initialData: Poll, initialVotedStatus: boolean }) {
+export default function PollVoteForm({
+  initialData,
+  initialVotedStatus,
+}: {
+  initialData: Poll;
+  initialVotedStatus: boolean;
+}) {
   const [hasVoted, setHasVoted] = useState(initialVotedStatus);
   const [selectedOptionId, setSelectedOptionId] = useState("");
   const [pollResults, setPollResults] = useState(initialData.options);
-  
-  const [state, formAction] = useFormState(votePoll, { message: "" });
+
+  const [state, formAction] = useFormState(votePoll, { message: "", poll: undefined });
+
+  function SubmitButton({ disabled = false }: { disabled?: boolean }) {
+    const { pending } = useFormStatus();
+    return (
+      <Button type="submit" className="w-full" disabled={pending || disabled}>
+        {pending ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Voting...
+          </>
+        ) : (
+          "Vote"
+        )}
+      </Button>
+    );
+  }
+
 
   useEffect(() => {
     if (state.message) {
       if (state.message === "Vote submitted successfully!") {
         setHasVoted(true);
         toast.success(state.message);
-        
-        // Manually update the vote count for the selected option in the local state
-        setPollResults(prevResults => {
-          return prevResults.map(option => {
-            if (option.id === selectedOptionId) {
-              return { ...option, votes: option.votes + 1 };
-            }
-            return option;
-          });
-        });
-        
+
+        // Replace results with server-fresh poll data
+        if (state.poll) {
+          setPollResults(state.poll.options);
+        }
+      } else if (state.message === "You have already voted in this poll.") {
+        setHasVoted(true);
+        toast.error(state.message);
+
+        // Optionally still show server poll results if available
+        if (state.poll) {
+          setPollResults(state.poll.options);
+        }
       } else {
         toast.error(state.message);
       }
     }
-  }, [state, selectedOptionId]);
+  }, [state]);
 
   const totalVotes = pollResults.reduce((sum, option) => sum + option.votes, 0);
 
@@ -83,17 +92,22 @@ export default function PollVoteForm({ initialData, initialVotedStatus }: { init
         {!hasVoted ? (
           <form action={formAction} className="space-y-4">
             <input type="hidden" name="poll_id" value={initialData.id} />
-            <RadioGroup name="poll_option_id" onValueChange={setSelectedOptionId}>
-              {initialData.options.map((option) => (
-                <div key={option.id} className="flex items-center space-x-2">
-                  <RadioGroupItem value={option.id} id={option.id} />
-                  <Label htmlFor={option.id} className="text-base">
-                    {option.text}
-                  </Label>
-                </div>
-              ))}
-            </RadioGroup>
-            <SubmitButton />
+        <RadioGroup
+          name="poll_option_id"
+          value={selectedOptionId}
+          onValueChange={setSelectedOptionId}
+        >
+          {initialData.options.map((option) => (
+            <div key={option.id} className="flex items-center space-x-2">
+              <RadioGroupItem value={option.id} id={option.id} />
+              <Label htmlFor={option.id} className="text-base">
+                {option.text}
+              </Label>
+            </div>
+          ))}
+        </RadioGroup>
+
+        <SubmitButton disabled={!selectedOptionId} />
           </form>
         ) : (
           <div>

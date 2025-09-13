@@ -1,11 +1,8 @@
 // /app/polls/[id]/page.tsx
-// This is a Server Component that fetches data
-
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
 import PollVoteForm from "@/components/polls/PollVoteForm";
 
-// Define the data types for better type safety
 interface Poll {
   id: string;
   question: string;
@@ -16,37 +13,25 @@ interface Poll {
   }>;
 }
 
-// Function to fetch all necessary data for the poll page
 async function getPollData(pollId: string): Promise<Poll | null> {
   const supabase = createServerComponentClient({ cookies });
 
-  // Fetch the poll question and options
   const { data: poll, error: pollError } = await supabase
     .from("polls")
     .select("id, question, poll_options(id, text)")
     .eq("id", pollId)
     .single();
 
-  if (pollError || !poll) {
-    console.error("Error fetching poll:", pollError);
-    return null;
-  }
+  if (pollError || !poll) return null;
 
-  // Fetch votes for each option
-  const { data: votes, error: votesError } = await supabase
+  const { data: votes } = await supabase
     .from("votes")
     .select("poll_option_id")
     .eq("poll_id", pollId);
 
-  if (votesError) {
-    console.error("Error fetching votes:", votesError);
-    return null;
-  }
-
-  // Aggregate votes for each option
   const aggregatedVotes = poll.poll_options.map((option) => ({
     ...option,
-    votes: votes.filter((v) => v.poll_option_id === option.id).length,
+    votes: votes?.filter((v) => v.poll_option_id === option.id).length ?? 0,
   }));
 
   return {
@@ -57,9 +42,41 @@ async function getPollData(pollId: string): Promise<Poll | null> {
 }
 
 export default async function PollPage({ params }: { params: { id: string } }) {
-  const cookiesStore = await cookies();
+  const supabase = createServerComponentClient({ cookies });
+  const cookiesStore = await cookies()
+  const { data: { user } } = await supabase.auth.getUser();
+
   const pollData = await getPollData(params.id);
-  const hasVoted = await cookiesStore.get(`voted-poll-${params.id}`);
+
+  // Default: not voted
+  let hasVoted = false;
+  if (pollData) {
+    if (user) {
+      // logged in → check DB by user_id
+      const { data: existingVote } = await supabase
+        .from("votes")
+        .select("id")
+        .eq("poll_id", params.id)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      hasVoted = !!existingVote;
+    } else {
+      // anonymous → check DB by voter_id cookie
+      const voterId = cookiesStore.get("voter_id")?.value;
+      if (voterId) {
+        const { data: existingVote } = await supabase
+          .from("votes")
+          .select("id")
+          .eq("poll_id", params.id)
+          .eq("voter_id", voterId)
+          .maybeSingle();
+
+        hasVoted = !!existingVote;
+      }
+    }
+  }
+
 
   if (!pollData) {
     return (
@@ -74,6 +91,10 @@ export default async function PollPage({ params }: { params: { id: string } }) {
     );
   }
 
-  // Pass the server-fetched data and cookie status to the client component
-  return <PollVoteForm initialData={pollData} initialVotedStatus={!!hasVoted} />;
+  return (
+    <PollVoteForm
+      initialData={pollData}
+      initialVotedStatus={hasVoted}
+    />
+  );
 }

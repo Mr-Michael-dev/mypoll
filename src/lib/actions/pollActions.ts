@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
+import { randomUUID } from "crypto";
 
 export async function createPoll(prevState: { message: string }, formData: FormData) {
   const supabase = createServerComponentClient({ cookies });
@@ -100,9 +101,11 @@ export async function editPoll(prevState: { message: string }, formData: FormDat
   return { message: "Poll updated successfully!" };
 }
 
-export async function votePoll(prevState: { message: string }, formData: FormData) {
-  // Get the cookies instance for this request
-  const cookiesStore = await cookies();
+export async function votePoll(
+  prevState: { message: string; poll?: unknown },
+  formData: FormData
+) {
+  const cookieStore = await cookies();
   const supabase = createServerComponentClient({ cookies });
 
   const pollId = formData.get("poll_id") as string;
@@ -112,33 +115,85 @@ export async function votePoll(prevState: { message: string }, formData: FormDat
     return { message: "Invalid poll or option." };
   }
 
-  // Check if a vote cookie already exists for this poll
-  const hasVotedCookie = cookiesStore.get(`voted-poll-${pollId}`);
-  if (hasVotedCookie) {
-    return { message: "You have already voted in this poll." };
+  // Detect logged-in user
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  let userId: string | null = null;
+  let voterId: string | null = null;
+
+  if (user) {
+    userId = user.id;
+  } else {
+    // Anonymous voter, use voter_id cookie
+    const existingVoterId = cookieStore.get("voter_id")?.value;
+    if (existingVoterId) {
+      voterId = existingVoterId;
+    } else {
+      // Create new voter_id and set it
+      voterId = randomUUID();
+      cookieStore.set("voter_id", voterId, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        maxAge: 60 * 60 * 24 * 365, // 1 year
+        path: "/",
+      });
+    }
   }
 
-  // Insert the vote into the database
+  // Insert vote
   const { error } = await supabase.from("votes").insert([
     {
       poll_id: pollId,
       poll_option_id: pollOptionId,
+      user_id: userId,
+      voter_id: voterId,
     },
   ]);
 
   if (error) {
+    if (error.code === "23505") {
+      // Already voted (DB constraint violation)
+      return { message: "You have already voted in this poll." };
+    }
     console.error("Supabase vote error:", error);
     return { message: "Failed to submit vote. Please try again." };
   }
 
-  // Set a cookie to prevent future votes from this browser
-  cookiesStore.set(`voted-poll-${pollId}`, "true", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    maxAge: 60 * 60 * 24 * 365, // 1 year
-    path: "/", // Available on all pages
-  });
+  // Fetch updated poll results with aggregated votes
+  const { data: poll, error: pollError } = await supabase
+    .from("polls")
+    .select(
+      `
+      id,
+      question,
+      options:poll_options(
+        id,
+        text,
+        votes:votes(count)
+      )
+    `
+    )
+    .eq("id", pollId)
+    .single();
 
-  revalidatePath(`/polls/${pollId}`); // Revalidate to show updated results
-  return { message: "Vote submitted successfully!" };
+  if (pollError || !poll) {
+    return { message: "Vote submitted, but failed to fetch updated results." };
+  }
+
+  // Reshape the votes into a simpler count
+  const pollWithCounts = {
+    ...poll,
+    options: poll.options.map((opt) => ({
+      id: opt.id,
+      text: opt.text,
+      votes: opt.votes?.[0]?.count || 0,
+    })),
+  };
+
+  // Ensure ISR/SSR pages update too
+  revalidatePath(`/polls/${pollId}`);
+
+  return { message: "Vote submitted successfully!", poll: pollWithCounts };
 }
